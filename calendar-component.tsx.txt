@@ -1,0 +1,572 @@
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Plus, X, Link, Image, Repeat, Bell } from 'lucide-react';
+
+const useAccessibility = () => {
+  const [settings, setSettings] = useState({
+    dockBarSizeIncrease: 0,
+    appIconSizeIncrease: 0,
+    regularIconSizeIncrease: 0,
+    textSizeIncrease: 0,
+    highContrast: false,
+    reduceMotion: false
+  });
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const result = await window.storage?.get('accessibility-settings');
+        if (result?.value) {
+          setSettings(prev => ({ ...prev, ...JSON.parse(result.value) }));
+        }
+      } catch (error) {
+        console.error('Failed to load accessibility settings:', error);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const getTextSize = (baseSize) => baseSize * (1 + settings.textSizeIncrease / 100);
+  const getIconSize = (baseSize) => baseSize * (1 + settings.regularIconSizeIncrease / 100);
+
+  return { settings, getTextSize, getIconSize };
+};
+
+const useMongoStorage = () => {
+  const [isMongoAvailable, setIsMongoAvailable] = useState(false);
+
+  useEffect(() => {
+    const checkMongo = async () => {
+      try {
+        const response = await fetch('/api/calendar/ping');
+        setIsMongoAvailable(response.ok);
+      } catch {
+        setIsMongoAvailable(false);
+      }
+    };
+    checkMongo();
+  }, []);
+
+  const saveEvents = async (events) => {
+    if (isMongoAvailable) {
+      try {
+        await fetch('/api/calendar/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ events })
+        });
+        return true;
+      } catch (error) {
+        console.error('MongoDB save failed, using RAM:', error);
+      }
+    }
+    return false;
+  };
+
+  const loadEvents = async () => {
+    if (isMongoAvailable) {
+      try {
+        const response = await fetch('/api/calendar/events');
+        if (response.ok) {
+          const data = await response.json();
+          return data.events || {};
+        }
+      } catch (error) {
+        console.error('MongoDB load failed, using RAM:', error);
+      }
+    }
+    return {};
+  };
+
+  return { saveEvents, loadEvents, isMongoAvailable };
+};
+
+const EventModal = ({ selectedDate, eventForm, setEventForm, onSave, onClose, accessibility }) => {
+  const [clickCount, setClickCount] = useState(0);
+
+  const addReminder = () => {
+    if (eventForm.reminders.length < 5) {
+      setEventForm({ ...eventForm, reminders: [...eventForm.reminders, { daysBefore: 1, duration: 5 }] });
+    }
+  };
+
+  const updateReminder = (index, field, value) => {
+    const newReminders = [...eventForm.reminders];
+    const numValue = parseInt(value);
+    if (field === 'daysBefore' && (numValue < 1 || numValue > 30 || newReminders.some((r, i) => i !== index && r.daysBefore === numValue))) return;
+    newReminders[index][field] = numValue;
+    setEventForm({ ...eventForm, reminders: newReminders });
+  };
+
+  const removeReminder = (index) => setEventForm({ ...eventForm, reminders: eventForm.reminders.filter((_, i) => i !== index) });
+
+  const textSize = accessibility.getTextSize(14);
+  const iconSize = accessibility.getIconSize(20);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-bold text-white" style={{ fontSize: `${accessibility.getTextSize(20)}px` }}>
+            Add Event
+          </h3>
+          <div className="flex gap-2">
+            <button 
+              onClick={onSave} 
+              className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700" 
+              style={{ fontSize: `${textSize}px` }}
+            >
+              Save
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded text-white">
+              <X size={iconSize} />
+            </button>
+          </div>
+        </div>
+        
+        {selectedDate && (
+          <div className="text-center mb-6 p-3 rounded-lg bg-zinc-800">
+            <div className="font-semibold text-white" style={{ fontSize: `${accessibility.getTextSize(18)}px` }}>
+              {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
+          </div>
+        )}
+        
+        <div className="space-y-4">
+          <input 
+            type="text" 
+            placeholder="Event Title" 
+            value={eventForm.title} 
+            onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })} 
+            className="w-full p-2 border border-zinc-700 rounded bg-zinc-800 text-white placeholder-zinc-500" 
+            style={{ fontSize: `${textSize}px` }} 
+          />
+          
+          <textarea 
+            placeholder="Description" 
+            value={eventForm.description} 
+            onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} 
+            className="w-full p-2 border border-zinc-700 rounded h-24 bg-zinc-800 text-white placeholder-zinc-500" 
+            style={{ fontSize: `${textSize}px` }} 
+          />
+          
+          <div className="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              id="allDay" 
+              checked={eventForm.allDay} 
+              onChange={(e) => setEventForm({ ...eventForm, allDay: e.target.checked })} 
+              className="rounded"
+            />
+            <label htmlFor="allDay" className="text-white" style={{ fontSize: `${textSize}px` }}>
+              All Day
+            </label>
+          </div>
+          
+          {!eventForm.allDay && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block mb-1 text-white" style={{ fontSize: `${textSize}px` }}>
+                  Start Date/Time
+                </label>
+                <input 
+                  type="datetime-local" 
+                  value={eventForm.startDate} 
+                  onChange={(e) => setEventForm({ ...eventForm, startDate: e.target.value })} 
+                  className="w-full p-2 border border-zinc-700 rounded bg-zinc-800 text-white" 
+                  style={{ fontSize: `${textSize}px` }} 
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-white" style={{ fontSize: `${textSize}px` }}>
+                  End Date/Time
+                </label>
+                <input 
+                  type="datetime-local" 
+                  value={eventForm.endDate} 
+                  onChange={(e) => setEventForm({ ...eventForm, endDate: e.target.value })} 
+                  className="w-full p-2 border border-zinc-700 rounded bg-zinc-800 text-white" 
+                  style={{ fontSize: `${textSize}px` }} 
+                />
+              </div>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2">
+            <Link size={iconSize} className="text-white" />
+            <input 
+              type="text" 
+              placeholder="Embed Link" 
+              value={eventForm.link} 
+              onChange={(e) => setEventForm({ ...eventForm, link: e.target.value })} 
+              className="flex-1 p-2 border border-zinc-700 rounded bg-zinc-800 text-white placeholder-zinc-500" 
+              style={{ fontSize: `${textSize}px` }} 
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Image size={iconSize} className="text-white" />
+            <input 
+              type="text" 
+              placeholder="Add Image URL" 
+              value={eventForm.image} 
+              onChange={(e) => setEventForm({ ...eventForm, image: e.target.value })} 
+              className="flex-1 p-2 border border-zinc-700 rounded bg-zinc-800 text-white placeholder-zinc-500" 
+              style={{ fontSize: `${textSize}px` }} 
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Repeat size={iconSize} className="text-white" />
+            <span className="text-white" style={{ fontSize: `${textSize}px` }}>Repeat every</span>
+            <input 
+              type="number" 
+              placeholder="Days" 
+              value={eventForm.repeatDays} 
+              onChange={(e) => setEventForm({ ...eventForm, repeatDays: e.target.value })} 
+              className="w-20 p-2 border border-zinc-700 rounded bg-zinc-800 text-white placeholder-zinc-500" 
+              style={{ fontSize: `${textSize}px` }} 
+            />
+            <span className="text-white" style={{ fontSize: `${textSize}px` }}>days</span>
+          </div>
+          
+          <div className="border-t border-zinc-700 pt-4">
+            <div className="flex justify-between items-center mb-2">
+              <h4 className="font-semibold text-white" style={{ fontSize: `${textSize}px` }}>
+                Reminders ({eventForm.reminders.length}/5)
+              </h4>
+              <button 
+                onClick={addReminder} 
+                disabled={eventForm.reminders.length >= 5}
+                className="flex items-center gap-1 px-3 py-1 rounded disabled:bg-zinc-700 bg-green-600 text-white hover:bg-green-700" 
+                style={{ fontSize: `${textSize}px` }}
+              >
+                <Bell size={accessibility.getIconSize(16)} />
+                Add Reminder
+              </button>
+            </div>
+            
+            <div className="space-y-2">
+              {eventForm.reminders.map((reminder, index) => (
+                <div key={index} className="flex items-center gap-2 p-2 bg-zinc-800 rounded">
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max="30" 
+                    value={reminder.daysBefore} 
+                    onChange={(e) => updateReminder(index, 'daysBefore', e.target.value)} 
+                    className="w-16 p-1 border border-zinc-700 rounded bg-zinc-900 text-white" 
+                    style={{ fontSize: `${textSize}px` }} 
+                  />
+                  <span className="text-white" style={{ fontSize: `${textSize}px` }}>days before, show for</span>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={reminder.duration} 
+                    onChange={(e) => updateReminder(index, 'duration', e.target.value)} 
+                    className="w-16 p-1 border border-zinc-700 rounded bg-zinc-900 text-white" 
+                    style={{ fontSize: `${textSize}px` }} 
+                  />
+                  <span className="text-white" style={{ fontSize: `${textSize}px` }}>minutes</span>
+                  <button onClick={() => removeReminder(index)} className="ml-auto p-1 hover:bg-zinc-700 rounded text-white">
+                    <X size={accessibility.getIconSize(16)} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Calendar = () => {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [events, setEvents] = useState({});
+  const [viewMode, setViewMode] = useState('month');
+  const [eventForm, setEventForm] = useState({
+    title: '', description: '', startDate: '', endDate: '', allDay: false,
+    link: '', image: '', repeatDays: '', reminders: []
+  });
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const [lastClickedDay, setLastClickedDay] = useState(null);
+
+  const accessibility = useAccessibility();
+  const storage = useMongoStorage();
+
+  useEffect(() => {
+    const loadInitialEvents = async () => {
+      const loadedEvents = await storage.loadEvents();
+      if (Object.keys(loadedEvents).length > 0) {
+        setEvents(loadedEvents);
+      }
+    };
+    loadInitialEvents();
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(events).length > 0) {
+      storage.saveEvents(events);
+    }
+  }, [events]);
+
+  const handleDateClick = (day) => {
+    const now = Date.now();
+    const clickedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    
+    if (lastClickedDay === day && now - lastClickTime < 300) {
+      setSelectedDate(clickedDate);
+      setShowEventModal(true);
+      setLastClickTime(0);
+      setLastClickedDay(null);
+    } else {
+      setLastClickTime(now);
+      setLastClickedDay(day);
+      setSelectedDate(clickedDate);
+    }
+  };
+
+  const saveEvent = () => {
+    if (!selectedDate || !eventForm.title) return;
+    const dateKey = selectedDate.toDateString();
+    setEvents({ ...events, [dateKey]: [...(events[dateKey] || []), { ...eventForm }] });
+    setShowEventModal(false);
+    setEventForm({ title: '', description: '', startDate: '', endDate: '', allDay: false, link: '', image: '', repeatDays: '', reminders: [] });
+  };
+
+  const previousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+  const previousYear = () => setCurrentDate(new Date(currentDate.getFullYear() - 1, currentDate.getMonth()));
+  const nextYear = () => setCurrentDate(new Date(currentDate.getFullYear() + 1, currentDate.getMonth()));
+
+  const textSize = accessibility.getTextSize(14);
+  const iconSize = accessibility.getIconSize(20);
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  const renderMonthView = () => {
+    const days = [];
+    const totalDays = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+    const firstDay = ((new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() + 6) % 7);
+    
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<div key={`empty-${i}`} className="border border-zinc-800 bg-zinc-900 min-h-24"></div>);
+    }
+    
+    const today = new Date();
+    for (let day = 1; day <= totalDays; day++) {
+      const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+      const isToday = day === today.getDate() && currentDate.getMonth() === today.getMonth() && currentDate.getFullYear() === today.getFullYear();
+      const isSelected = selectedDate && day === selectedDate.getDate() && currentDate.getMonth() === selectedDate.getMonth() && currentDate.getFullYear() === selectedDate.getFullYear();
+      const dayOfWeek = (date.getDay() + 6) % 7;
+      const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
+      const dateKey = date.toDateString();
+      const dayEvents = events[dateKey] || [];
+      
+      days.push(
+        <div 
+          key={day} 
+          onClick={() => handleDateClick(day)}
+          className={`border border-zinc-800 p-2 cursor-pointer min-h-24 flex flex-col
+            ${isToday ? 'bg-blue-900 border-blue-600' : ''}
+            ${isWeekend && !isToday ? 'bg-zinc-900' : 'bg-zinc-950'}
+            ${isSelected ? 'ring-2 ring-blue-500 ring-inset' : ''}
+            hover:bg-zinc-800`}
+        >
+          <div 
+            className="font-semibold mb-1 text-white" 
+            style={{ fontSize: `${textSize}px` }}
+          >
+            {day}
+          </div>
+          <div className="space-y-1 flex-1 overflow-y-auto">
+            {dayEvents.map((event, i) => (
+              <div 
+                key={i} 
+                className="text-xs px-1 py-0.5 rounded truncate bg-blue-600 text-white" 
+                title={event.title} 
+                style={{ fontSize: `${accessibility.getTextSize(12)}px` }}
+              >
+                {event.title}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    
+    return <div className="grid gap-0" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>{days}</div>;
+  };
+
+  const getWeekDays = () => {
+    const week = [];
+    const curr = new Date(currentDate);
+    const monday = curr.getDate() - curr.getDay() + (curr.getDay() === 0 ? -6 : 1);
+    for (let i = 0; i < 7; i++) week.push(new Date(curr.setDate(monday + i)));
+    return week;
+  };
+
+  const getWeekNumber = (date) => {
+    const start = new Date(date.getFullYear(), 0, 1);
+    return Math.ceil(((date - start) / 86400000 + start.getDay() + 1) / 7);
+  };
+
+  const renderWeekView = () => {
+    const weekDays = getWeekDays();
+    const weekNum = getWeekNumber(weekDays[0]);
+    
+    return (
+      <div className="space-y-2">
+        <div className="text-center font-semibold mb-4 text-white" style={{ fontSize: `${accessibility.getTextSize(18)}px` }}>
+          Week {weekNum}
+        </div>
+        {weekDays.map((date, index) => {
+          const dateKey = date.toDateString();
+          const dayEvents = events[dateKey] || [];
+          const dayOfWeek = (date.getDay() + 6) % 7;
+          const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
+          
+          return (
+            <div 
+              key={index} 
+              className={`border border-zinc-800 rounded-lg p-3 ${isWeekend ? 'bg-zinc-900' : 'bg-zinc-950'}`}
+            >
+              <div className="font-semibold mb-2 text-white" style={{ fontSize: `${textSize}px` }}>
+                {dayNames[index]} - {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </div>
+              <div className="space-y-1">
+                {dayEvents.map((event, i) => (
+                  <div key={i} className="text-sm bg-blue-900 text-white p-2 rounded">
+                    <div className="font-medium">{event.title}</div>
+                    {!event.allDay && event.startDate && (
+                      <div className="text-xs text-gray-300">{event.startDate}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderYearView = () => {
+    return (
+      <div className="grid grid-cols-3 gap-4">
+        {Array.from({ length: 12 }, (_, m) => (
+          <div key={m} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 shadow-sm">
+            <div className="font-semibold text-center mb-2 text-white" style={{ fontSize: `${accessibility.getTextSize(12)}px` }}>
+              {monthNames[m]}
+            </div>
+            <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+              {dayNames.map((d, i) => (
+                <div key={i} className="text-xs text-center text-gray-500">{d.substring(0, 1)}</div>
+              ))}
+              {(() => {
+                const miniDays = [];
+                const date = new Date(currentDate.getFullYear(), m, 1);
+                const firstDay = ((new Date(date.getFullYear(), date.getMonth(), 1).getDay() + 6) % 7);
+                const totalDays = new Date(date.getFullYear(), m + 1, 0).getDate();
+                
+                for (let i = 0; i < firstDay; i++) miniDays.push(<div key={`e-${i}`} className="text-xs"></div>);
+                
+                for (let d = 1; d <= totalDays; d++) {
+                  const dayDate = new Date(currentDate.getFullYear(), m, d);
+                  const hasEvents = events[dayDate.toDateString()]?.length > 0;
+                  miniDays.push(
+                    <div key={d} className="text-xs text-center p-0.5 relative text-white">
+                      {d}
+                      {hasEvents && <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-0.5 h-0.5 bg-blue-500 rounded-full"></div>}
+                    </div>
+                  );
+                }
+                return miniDays;
+              })()}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-black p-8">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl shadow-lg p-6 w-full max-w-5xl">
+        <div className="flex justify-between items-center mb-6">
+          <button 
+            onClick={() => setShowEventModal(true)} 
+            className="flex items-center gap-2 px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700" 
+            style={{ fontSize: `${textSize}px` }}
+          >
+            <Plus size={iconSize} />
+            Add Event
+          </button>
+          
+          <div className="flex flex-col items-center flex-1">
+            <div className="flex items-center gap-4">
+              <button onClick={viewMode === 'year' ? previousYear : previousMonth} className="p-2 hover:bg-zinc-800 rounded-full text-white">
+                <ChevronLeft size={iconSize} />
+              </button>
+              <h2 className="font-bold text-white" style={{ fontSize: `${accessibility.getTextSize(24)}px` }}>
+                {viewMode === 'year' ? currentDate.getFullYear() : `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`}
+              </h2>
+              <button onClick={viewMode === 'year' ? nextYear : nextMonth} className="p-2 hover:bg-zinc-800 rounded-full text-white">
+                <ChevronRight size={iconSize} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            {['week', 'month', 'year'].map(mode => (
+              <button 
+                key={mode} 
+                onClick={() => setViewMode(mode)}
+                className={`px-3 py-1 rounded capitalize ${viewMode === mode ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-white'}`} 
+                style={{ fontSize: `${textSize}px` }}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        {viewMode === 'month' && (
+          <>
+            <div className="grid gap-0 border-b border-zinc-800" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+              {dayNames.map((day, i) => (
+                <div 
+                  key={i} 
+                  className="text-center font-semibold py-2 border-r border-zinc-800 last:border-r-0 bg-zinc-900 text-white" 
+                  style={{ fontSize: `${textSize}px` }}
+                >
+                  {day}
+                </div>
+              ))}
+            </div>
+            {renderMonthView()}
+          </>
+        )}
+        
+        {viewMode === 'week' && renderWeekView()}
+        {viewMode === 'year' && renderYearView()}
+      </div>
+
+      {showEventModal && (
+        <EventModal 
+          selectedDate={selectedDate}
+          eventForm={eventForm}
+          setEventForm={setEventForm}
+          onSave={saveEvent}
+          onClose={() => setShowEventModal(false)}
+          accessibility={accessibility}
+        />
+      )}
+    </div>
+  );
+};
+
+export default Calendar;
