@@ -38,8 +38,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/Media',   express.static(path.join(__dirname, 'Media')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/Poem',    express.static(path.join(__dirname, 'Poem')));
 app.use('/Game',    express.static(path.join(__dirname, 'Game')));
+
+app.use('/Poem/1.js', require('./Poem/1.js'));
+app.use('/Poem/2.js', require('./Poem/2.js'));
+app.use('/Poem/3.js', require('./Poem/3.js'));
 
 app.use(session({
   secret: 'brooklyn-secret-key',
@@ -104,7 +107,7 @@ app.post('/api/notes', requireAuth, upload.single('image'), async (req, res) => 
 
 app.get('/', (req, res) => res.send(getIndexHTML()));
 
-['uploads', 'Media', 'Poem', 'Game/DVD'].forEach(dir => {
+['uploads', 'Media', 'Game/DVD'].forEach(dir => {
   const p = path.join(__dirname, dir);
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
