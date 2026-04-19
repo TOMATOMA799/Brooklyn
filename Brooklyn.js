@@ -1,0 +1,587 @@
+const express = require('express');
+const path = require('path');
+const mongoose = require('mongoose');
+const multer = require('multer');
+const session = require('express-session');
+const fs = require('fs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+let memoryNotes = [];
+let useMemory = false;
+let Note;
+
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/brooklyn';
+
+mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 4000 })
+  .then(() => {
+    const noteSchema = new mongoose.Schema({
+      title:     { type: String, maxlength: 50, required: true },
+      body:      { type: String, required: true },
+      image:     { type: String, default: null },
+      createdAt: { type: Date, default: Date.now }
+    });
+    Note = mongoose.model('Note', noteSchema);
+  })
+  .catch(() => {
+    useMemory = true;
+  });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
+  filename:    (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
+});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/Media',   express.static(path.join(__dirname, 'Media')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/Poem',    express.static(path.join(__dirname, 'Poem')));
+
+app.use(session({
+  secret: 'brooklyn-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 4 }
+}));
+
+const PASSCODE = '122013';
+
+app.post('/auth/login', (req, res) => {
+  const { passcode } = req.body;
+  if (passcode === PASSCODE) {
+    req.session.authenticated = true;
+    return res.json({ success: true });
+  }
+  res.status(401).json({ success: false, message: 'Wrong passcode.' });
+});
+
+function requireAuth(req, res, next) {
+  if (req.session && req.session.authenticated) return next();
+  res.status(401).json({ error: 'Unauthorized' });
+}
+
+app.get('/api/notes', requireAuth, async (req, res) => {
+  try {
+    if (useMemory || !Note) return res.json(memoryNotes.slice().reverse());
+    const notes = await Note.find().sort({ createdAt: -1 });
+    res.json(notes);
+  } catch {
+    res.json(memoryNotes.slice().reverse());
+  }
+});
+
+app.post('/api/notes', requireAuth, upload.single('image'), async (req, res) => {
+  const { title, body } = req.body;
+  const imageFile = req.file ? req.file.filename : null;
+
+  if (!title || !body) return res.status(400).json({ error: 'Title and note are required.' });
+
+  const noteData = {
+    title:     title.slice(0, 50),
+    body,
+    image:     imageFile,
+    createdAt: new Date()
+  };
+
+  try {
+    if (useMemory || !Note) {
+      const mem = { ...noteData, _id: Date.now().toString() };
+      memoryNotes.push(mem);
+      return res.json(mem);
+    }
+    const saved = await new Note(noteData).save();
+    res.json(saved);
+  } catch {
+    const mem = { ...noteData, _id: Date.now().toString() };
+    memoryNotes.push(mem);
+    res.json(mem);
+  }
+});
+
+app.get('/', (req, res) => res.send(getIndexHTML()));
+
+['uploads', 'Media', 'Poem'].forEach(dir => {
+  const p = path.join(__dirname, dir);
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+});
+
+app.listen(PORT);
+
+function getIndexHTML() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brooklyn</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #111214;
+      --surface:   #1a1c1f;
+      --surface2:  #22252a;
+      --border:    #2e3138;
+      --accent:    #1b3a6b;
+      --accent-lit:#2a5299;
+      --text:      #e8e4df;
+      --muted:     #7a7a85;
+      --btn-bg:    rgba(255,255,255,0.08);
+      --btn-hover: rgba(255,255,255,0.14);
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Crimson Text', Georgia, serif;
+      min-height: 100vh;
+    }
+
+    #lock-overlay {
+      position: fixed; inset: 0; z-index: 999;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 1.5rem;
+    }
+    #lock-overlay h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-style: italic;
+      letter-spacing: 0.04em;
+    }
+    #lock-overlay p { color: var(--muted); font-size: 1.05rem; }
+    #passcode-form { display: flex; gap: 0.6rem; }
+    #passcode-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.65rem 1rem;
+      font-size: 1rem;
+      font-family: inherit;
+      border-radius: 4px;
+      letter-spacing: 0.2em;
+      outline: none;
+      width: 160px;
+      transition: border-color 0.2s;
+    }
+    #passcode-input:focus { border-color: var(--accent-lit); }
+    #passcode-input.shake {
+      animation: shake 0.35s ease;
+      border-color: #a03030;
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-6px); }
+      40%      { transform: translateX(6px); }
+      60%      { transform: translateX(-4px); }
+      80%      { transform: translateX(4px); }
+    }
+    #passcode-submit {
+      background: var(--accent);
+      border: none; color: #fff;
+      padding: 0.65rem 1.4rem;
+      font-family: 'Crimson Text', serif;
+      font-size: 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #passcode-submit:hover { background: var(--accent-lit); }
+    #lock-error { color: #c0392b; font-size: 0.9rem; min-height: 1.2rem; }
+
+    #main { display: none; }
+
+    #banner-wrap {
+      position: relative;
+      width: 100%;
+      max-height: 340px;
+      overflow: hidden;
+    }
+    #banner-wrap img {
+      width: 100%;
+      height: 340px;
+      object-fit: cover;
+      display: block;
+    }
+    #banner-wrap::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.1) 60%, rgba(17,18,20,0.7) 100%);
+      pointer-events: none;
+    }
+    #banner-title {
+      position: absolute;
+      top: 50%;
+      left: 2rem;
+      transform: translateY(-50%);
+      z-index: 2;
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: clamp(2.8rem, 6vw, 5rem);
+      color: #fff;
+      text-shadow: 0 2px 18px rgba(0,0,0,0.7);
+      letter-spacing: 0.02em;
+      pointer-events: none;
+    }
+    #notes-btn {
+      position: absolute;
+      top: 1.2rem;
+      right: 1.4rem;
+      z-index: 3;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0.55rem 1.1rem;
+      font-family: 'Crimson Text', serif;
+      font-size: 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background 0.2s, transform 0.15s;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+    #notes-btn:hover { background: var(--accent-lit); transform: translateY(-1px); }
+
+    #poem-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 1.4rem;
+      padding: 2.2rem 1rem 1.5rem;
+    }
+    .poem-btn {
+      background: var(--btn-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.7rem 2.2rem;
+      font-family: 'Crimson Text', serif;
+      font-size: 1.05rem;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 0.06em;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+    }
+    .poem-btn:hover {
+      background: var(--btn-hover);
+      border-color: #4a4f5a;
+      transform: translateY(-2px);
+    }
+
+    #notes-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      align-items: flex-start;
+      justify-content: flex-end;
+    }
+    #notes-panel.open { display: flex; }
+    #notes-drawer {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      width: min(480px, 100vw);
+      height: 100vh;
+      overflow-y: auto;
+      padding: 2rem 1.6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.4rem;
+      animation: slideIn 0.25s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(40px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+    #notes-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #notes-header h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem;
+      font-weight: 400;
+    }
+    #notes-close {
+      background: none; border: none;
+      color: var(--muted); font-size: 1.5rem;
+      cursor: pointer; line-height: 1;
+      transition: color 0.15s;
+    }
+    #notes-close:hover { color: var(--text); }
+
+    #note-form {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+    #note-form input[type="text"],
+    #note-form textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Crimson Text', serif;
+      font-size: 1rem;
+      padding: 0.55rem 0.8rem;
+      border-radius: 4px;
+      outline: none;
+      transition: border-color 0.2s;
+      resize: vertical;
+    }
+    #note-form input[type="text"]:focus,
+    #note-form textarea:focus { border-color: var(--accent-lit); }
+    #note-title-wrap { position: relative; }
+    #note-title { width: 100%; }
+    #title-counter {
+      position: absolute;
+      right: 0.6rem; bottom: 0.45rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    #note-body { width: 100%; min-height: 100px; }
+
+    .upload-placeholder {
+      border: 2px dashed var(--border);
+      border-radius: 6px;
+      padding: 1.2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      position: relative;
+    }
+    .upload-placeholder:hover { border-color: var(--accent-lit); color: var(--text); }
+    .upload-placeholder input {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-placeholder span { pointer-events: none; }
+    #upload-name { font-size: 0.82rem; color: var(--accent-lit); margin-top: 0.3rem; }
+
+    #note-submit {
+      background: var(--accent);
+      border: none; color: #fff;
+      padding: 0.65rem;
+      font-family: 'Crimson Text', serif;
+      font-size: 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #note-submit:hover { background: var(--accent-lit); }
+
+    #notes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .note-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.1rem;
+    }
+    .note-card h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+    .note-card p {
+      font-size: 0.97rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .note-card .note-date {
+      font-size: 0.78rem;
+      color: var(--border);
+      margin-top: 0.5rem;
+    }
+    .note-card img {
+      margin-top: 0.7rem;
+      max-width: 100%;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    #notes-empty { color: var(--muted); font-size: 0.97rem; text-align: center; padding: 1rem 0; }
+  </style>
+</head>
+<body>
+
+<div id="lock-overlay">
+  <h1>Brooklyn</h1>
+  <p>Enter passcode to continue</p>
+  <div id="passcode-form">
+    <input id="passcode-input" type="password" placeholder="••••••" autocomplete="off" maxlength="10" />
+    <button id="passcode-submit">Enter</button>
+  </div>
+  <div id="lock-error"></div>
+</div>
+
+<div id="main">
+  <div id="banner-wrap">
+    <img src="/Media/Banner.png" alt="Banner" />
+    <div id="banner-title">Brooklyn</div>
+    <button id="notes-btn">Notes</button>
+  </div>
+
+  <div id="poem-buttons">
+    <button class="poem-btn" onclick="location.href='/Poem/1.js'">Poem 1</button>
+    <button class="poem-btn" onclick="location.href='/Poem/2.js'">Poem 2</button>
+    <button class="poem-btn" onclick="location.href='/Poem/3.js'">Poem 3</button>
+  </div>
+</div>
+
+<div id="notes-panel">
+  <div id="notes-drawer">
+    <div id="notes-header">
+      <h2>Notes</h2>
+      <button id="notes-close">&#x2715;</button>
+    </div>
+
+    <div id="note-form">
+      <div id="note-title-wrap">
+        <input id="note-title" type="text" placeholder="Title" maxlength="50" />
+        <span id="title-counter">0 / 50</span>
+      </div>
+      <textarea id="note-body" placeholder="Write a note..."></textarea>
+      <div class="upload-placeholder">
+        <input type="file" id="note-image" accept="image/*" />
+        <span>&#128206; Attach a picture</span>
+        <div id="upload-name"></div>
+      </div>
+      <button id="note-submit">Create Note</button>
+    </div>
+
+    <div id="notes-list">
+      <div id="notes-empty">No notes yet.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const lockOverlay    = document.getElementById('lock-overlay');
+  const main           = document.getElementById('main');
+  const passcodeInput  = document.getElementById('passcode-input');
+  const passcodeSubmit = document.getElementById('passcode-submit');
+  const lockError      = document.getElementById('lock-error');
+  const notesBtn       = document.getElementById('notes-btn');
+  const notesPanel     = document.getElementById('notes-panel');
+  const notesClose     = document.getElementById('notes-close');
+  const noteTitle      = document.getElementById('note-title');
+  const titleCounter   = document.getElementById('title-counter');
+  const noteBody       = document.getElementById('note-body');
+  const noteImage      = document.getElementById('note-image');
+  const uploadName     = document.getElementById('upload-name');
+  const noteSubmit     = document.getElementById('note-submit');
+  const notesList      = document.getElementById('notes-list');
+  const notesEmpty     = document.getElementById('notes-empty');
+
+  async function tryLogin() {
+    lockError.textContent = '';
+    const res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode: passcodeInput.value })
+    });
+    const data = await res.json();
+    if (data.success) {
+      lockOverlay.style.display = 'none';
+      main.style.display = 'block';
+    } else {
+      lockError.textContent = 'Incorrect passcode.';
+      passcodeInput.classList.add('shake');
+      passcodeInput.value = '';
+      setTimeout(() => passcodeInput.classList.remove('shake'), 400);
+    }
+  }
+
+  passcodeSubmit.addEventListener('click', tryLogin);
+  passcodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+  noteTitle.addEventListener('input', () => {
+    titleCounter.textContent = noteTitle.value.length + ' / 50';
+  });
+
+  noteImage.addEventListener('change', () => {
+    uploadName.textContent = noteImage.files[0] ? noteImage.files[0].name : '';
+  });
+
+  notesBtn.addEventListener('click', () => {
+    notesPanel.classList.add('open');
+    loadNotes();
+  });
+
+  notesClose.addEventListener('click', () => notesPanel.classList.remove('open'));
+  notesPanel.addEventListener('click', e => { if (e.target === notesPanel) notesPanel.classList.remove('open'); });
+
+  async function loadNotes() {
+    try {
+      const res = await fetch('/api/notes');
+      const notes = await res.json();
+      renderNotes(notes);
+    } catch {}
+  }
+
+  function renderNotes(notes) {
+    notesList.innerHTML = '';
+    if (!notes.length) {
+      notesList.appendChild(notesEmpty);
+      return;
+    }
+    notes.forEach(n => {
+      const card = document.createElement('div');
+      card.className = 'note-card';
+      const date = new Date(n.createdAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+      card.innerHTML = \`
+        <h3>\${escHtml(n.title)}</h3>
+        <p>\${escHtml(n.body)}</p>
+        \${n.image ? \`<img src="/uploads/\${n.image}" alt="attachment" />\` : ''}
+        <div class="note-date">\${date}</div>
+      \`;
+      notesList.appendChild(card);
+    });
+  }
+
+  noteSubmit.addEventListener('click', async () => {
+    const title = noteTitle.value.trim();
+    const body  = noteBody.value.trim();
+    if (!title || !body) return;
+
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('body', body);
+    if (noteImage.files[0]) fd.append('image', noteImage.files[0]);
+
+    try {
+      await fetch('/api/notes', { method: 'POST', body: fd });
+      noteTitle.value = '';
+      titleCounter.textContent = '0 / 50';
+      noteBody.value = '';
+      noteImage.value = '';
+      uploadName.textContent = '';
+      loadNotes();
+    } catch {}
+  });
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+</body>
+</html>`;
+}
