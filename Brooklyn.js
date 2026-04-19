@@ -57,6 +57,21 @@ app.get('/Poem/1.js', (req, res) => res.send(poemHTML('Poem 1', poem1)));
 app.get('/Poem/2.js', (req, res) => res.send(poemHTML('Poem 2', 'Coming soon.')));
 app.get('/Poem/3.js', (req, res) => res.send(poemHTML('Poem 3', 'Coming soon.')));
 
+// Weather API proxy — forwards to Open-Meteo (no key needed)
+app.get('/api/weather', async (req, res) => {
+  try {
+    // Reading, England coords
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=51.4543&longitude=-0.9781' +
+      '&current=temperature_2m,weathercode,windspeed_10m,precipitation,uv_index,apparent_temperature' +
+      '&hourly=precipitation_probability&timezone=Europe%2FLondon&forecast_days=1&temperature_unit=celsius';
+    const r = await fetch(url);
+    const d = await r.json();
+    res.json(d);
+  } catch (e) {
+    res.status(500).json({ error: 'Weather fetch failed' });
+  }
+});
+
 app.get('/', (req, res) => res.send(getIndexHTML()));
 
 ['uploads', 'Media', 'Game/DVD'].forEach(dir => {
@@ -99,6 +114,7 @@ function getIndexHTML() {
       min-height: 100vh;
     }
 
+    /* ── LOCK OVERLAY ── */
     #lock-overlay {
       position: fixed; inset: 0; z-index: 999;
       background: var(--bg);
@@ -153,6 +169,7 @@ function getIndexHTML() {
 
     #main { display: none; }
 
+    /* ── BANNER ── */
     #banner-wrap {
       position: relative;
       width: 100%;
@@ -205,12 +222,20 @@ function getIndexHTML() {
     }
     #notes-btn:hover { background: var(--accent-lit); transform: translateY(-1px); }
 
+    /* ── CONTENT ROW: poems left, widgets right ── */
+    #content-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.5rem;
+      padding: 2.2rem 2rem 1rem;
+    }
+
     #poem-buttons {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
       gap: 0.75rem;
-      padding: 2.2rem 2rem 1rem;
+      flex: 1;
     }
     .poem-btn {
       background: var(--btn-bg);
@@ -230,6 +255,237 @@ function getIndexHTML() {
       transform: translateX(3px);
     }
 
+    /* ── WIDGETS COLUMN ── */
+    #widgets-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-width: 200px;
+      width: 200px;
+    }
+
+    /* ── WEATHER WIDGET ── */
+    #weather-widget {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    #weather-widget:hover { border-color: var(--accent-lit); background: var(--surface2); }
+    #weather-compact {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+    }
+    #weather-icon {
+      font-size: 1.8rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    #weather-temp {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem;
+      color: var(--text);
+      line-height: 1;
+    }
+    #weather-desc {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.15rem;
+      letter-spacing: 0.04em;
+    }
+    #weather-location {
+      font-size: 0.72rem;
+      color: var(--border);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-top: 0.1rem;
+    }
+    #weather-expanded {
+      display: none;
+      margin-top: 0.8rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--border);
+      animation: fadeIn 0.2s ease;
+    }
+    #weather-expanded.open { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    .wx-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.3rem 0;
+      font-size: 0.83rem;
+      border-bottom: 1px solid rgba(46,49,56,0.5);
+    }
+    .wx-row:last-child { border-bottom: none; }
+    .wx-label { color: var(--muted); letter-spacing: 0.04em; }
+    .wx-value { color: var(--text); font-weight: 600; }
+    #weather-widget.expanded { border-color: var(--accent-lit); }
+
+    /* ── CALENDAR WIDGET ── */
+    #calendar-widget {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #calendar-widget:hover { border-color: var(--accent-lit); background: var(--surface2); }
+    #calendar-compact {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+    }
+    #cal-icon {
+      font-size: 1.6rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    #cal-date-display {
+      flex: 1;
+    }
+    #cal-today-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    #cal-date-str {
+      font-family: 'Playfair Display', serif;
+      font-size: 1rem;
+      color: var(--text);
+      margin-top: 0.05rem;
+    }
+    #cal-event-preview {
+      font-size: 0.76rem;
+      color: var(--accent-lit);
+      margin-top: 0.15rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #calendar-expanded {
+      display: none;
+      margin-top: 0.8rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--border);
+      animation: fadeIn 0.2s ease;
+    }
+    #calendar-expanded.open { display: block; }
+    #mini-cal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    #mini-cal-title {
+      font-size: 0.85rem;
+      font-family: 'Playfair Display', serif;
+      color: var(--text);
+    }
+    .mini-nav {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0 0.2rem;
+      transition: color 0.15s;
+    }
+    .mini-nav:hover { color: var(--text); }
+    #mini-cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+    .mini-cal-day-name {
+      text-align: center;
+      font-size: 0.6rem;
+      color: var(--muted);
+      padding: 0.1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .mini-cal-day {
+      text-align: center;
+      font-size: 0.72rem;
+      padding: 0.22rem 0;
+      border-radius: 3px;
+      color: var(--muted);
+      position: relative;
+    }
+    .mini-cal-day.today {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      border-radius: 4px;
+    }
+    .mini-cal-day.has-event::after {
+      content: '';
+      position: absolute;
+      bottom: 1px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 3px;
+      height: 3px;
+      background: var(--accent-lit);
+      border-radius: 50%;
+    }
+    .mini-cal-day.today.has-event::after { background: rgba(255,255,255,0.7); }
+    #cal-today-events {
+      margin-top: 0.7rem;
+    }
+    #cal-events-title {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.3rem;
+    }
+    .cal-event-item {
+      background: var(--surface2);
+      border-left: 2px solid var(--accent-lit);
+      border-radius: 0 4px 4px 0;
+      padding: 0.35rem 0.6rem;
+      margin-bottom: 0.3rem;
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+    .cal-event-item .ev-time {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 0.1rem;
+    }
+    #cal-no-events {
+      font-size: 0.78rem;
+      color: var(--border);
+      font-style: italic;
+    }
+    #open-calendar-btn {
+      display: block;
+      width: 100%;
+      margin-top: 0.7rem;
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 0.45rem;
+      font-family: 'Crimson Text', serif;
+      font-size: 0.82rem;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background 0.2s;
+    }
+    #open-calendar-btn:hover { background: var(--accent-lit); }
+    #calendar-widget.expanded { border-color: var(--accent-lit); }
+
+    /* ── MEDIA GRID ── */
     #media-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -288,7 +544,6 @@ function getIndexHTML() {
       height: 48px;
       filter: drop-shadow(0 2px 8px rgba(0,0,0,0.7));
     }
-
     .dvd-thumb-text {
       font-family: 'Courier New', monospace;
       font-size: clamp(1rem, 2.5vw, 1.6rem);
@@ -299,6 +554,7 @@ function getIndexHTML() {
       user-select: none;
     }
 
+    /* ── NOTES PANEL ── */
     #notes-panel {
       display: none;
       position: fixed;
@@ -343,7 +599,6 @@ function getIndexHTML() {
       transition: color 0.15s;
     }
     #notes-close:hover { color: var(--text); }
-
     #note-form {
       background: var(--surface2);
       border: 1px solid var(--border);
@@ -378,7 +633,6 @@ function getIndexHTML() {
       pointer-events: none;
     }
     #note-body { width: 100%; min-height: 100px; }
-
     .upload-placeholder {
       border: 2px dashed var(--border);
       border-radius: 6px;
@@ -397,7 +651,6 @@ function getIndexHTML() {
     }
     .upload-placeholder span { pointer-events: none; }
     #upload-name { font-size: 0.82rem; color: var(--accent-lit); margin-top: 0.3rem; }
-
     #note-submit {
       background: var(--accent);
       border: none; color: #fff;
@@ -409,7 +662,6 @@ function getIndexHTML() {
       transition: background 0.2s;
     }
     #note-submit:hover { background: var(--accent-lit); }
-
     #notes-list {
       display: flex;
       flex-direction: column;
@@ -462,13 +714,82 @@ function getIndexHTML() {
   <div id="banner-wrap">
     <img src="/Media/Banner.png" alt="Banner" />
     <div id="banner-title">Brooklyn</div>
+    <button id="notes-btn" onclick="notesPanel.classList.add('open'); loadNotes();">Notes</button>
   </div>
 
-  <div id="poem-buttons">
-    <button class="poem-btn" onclick="location.href='/Poem/1.js'">Poem 1</button>
-    <button class="poem-btn" onclick="location.href='/Poem/2.js'">Poem 2</button>
-    <button class="poem-btn" onclick="location.href='/Poem/3.js'">Poem 3</button>
-  </div>
+  <!-- CONTENT ROW: poems left, widgets right -->
+  <div id="content-row">
+    <div id="poem-buttons">
+      <button class="poem-btn" onclick="location.href='/Poem/1.js'">Poem 1</button>
+      <button class="poem-btn" onclick="location.href='/Poem/2.js'">Poem 2</button>
+      <button class="poem-btn" onclick="location.href='/Poem/3.js'">Poem 3</button>
+    </div>
+
+    <div id="widgets-col">
+
+      <!-- WEATHER WIDGET -->
+      <div id="weather-widget" onclick="toggleWeather()">
+        <div id="weather-compact">
+          <div id="weather-icon">⛅</div>
+          <div>
+            <div id="weather-temp">—°C</div>
+            <div id="weather-desc">Loading…</div>
+            <div id="weather-location">Reading, England</div>
+          </div>
+        </div>
+        <div id="weather-expanded">
+          <div class="wx-row">
+            <span class="wx-label">Feels like</span>
+            <span class="wx-value" id="wx-feels">—</span>
+          </div>
+          <div class="wx-row">
+            <span class="wx-label">Wind</span>
+            <span class="wx-value" id="wx-wind">—</span>
+          </div>
+          <div class="wx-row">
+            <span class="wx-label">Precipitation</span>
+            <span class="wx-value" id="wx-precip">—</span>
+          </div>
+          <div class="wx-row">
+            <span class="wx-label">UV Index</span>
+            <span class="wx-value" id="wx-uv">—</span>
+          </div>
+          <div class="wx-row">
+            <span class="wx-label">Precip. chance</span>
+            <span class="wx-value" id="wx-rain-chance">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CALENDAR WIDGET -->
+      <div id="calendar-widget" onclick="toggleCalendar()">
+        <div id="calendar-compact">
+          <div id="cal-icon">📅</div>
+          <div id="cal-date-display">
+            <div id="cal-today-label">Today</div>
+            <div id="cal-date-str">—</div>
+            <div id="cal-event-preview">No events</div>
+          </div>
+        </div>
+        <div id="calendar-expanded">
+          <div id="mini-cal-header">
+            <button class="mini-nav" onclick="event.stopPropagation(); miniCalNav(-1)">&#8249;</button>
+            <span id="mini-cal-title">April 2026</span>
+            <button class="mini-nav" onclick="event.stopPropagation(); miniCalNav(1)">&#8250;</button>
+          </div>
+          <div id="mini-cal-grid"></div>
+          <div id="cal-today-events">
+            <div id="cal-events-title">Today's events</div>
+            <div id="cal-events-list"></div>
+          </div>
+          <button id="open-calendar-btn" onclick="event.stopPropagation(); location.href='/Game/DVD/index.html'">
+            Open full calendar ›
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /widgets-col -->
+  </div><!-- /content-row -->
 
   <div id="media-grid">
     <div class="media-card" onclick="location.href='/Game/DVD/index.html'">
@@ -486,15 +807,40 @@ function getIndexHTML() {
   </div>
 </div>
 
+<!-- NOTES PANEL -->
+<div id="notes-panel">
+  <div id="notes-drawer">
+    <div id="notes-header">
+      <h2>Notes</h2>
+      <button id="notes-close" onclick="notesPanel.classList.remove('open')">&times;</button>
+    </div>
+    <div id="note-form">
+      <div id="note-title-wrap">
+        <input id="note-title" type="text" placeholder="Title" maxlength="50" />
+        <span id="title-counter">0 / 50</span>
+      </div>
+      <textarea id="note-body" placeholder="Write something…"></textarea>
+      <div class="upload-placeholder">
+        <span>Attach an image</span>
+        <input id="note-image" type="file" accept="image/*" />
+      </div>
+      <div id="upload-name"></div>
+      <button id="note-submit">Save note</button>
+    </div>
+    <div id="notes-list">
+      <div id="notes-empty">No notes yet.</div>
+    </div>
+  </div>
+</div>
+
 <script>
+  /* ── AUTH ── */
   const lockOverlay    = document.getElementById('lock-overlay');
   const main           = document.getElementById('main');
   const passcodeInput  = document.getElementById('passcode-input');
   const passcodeSubmit = document.getElementById('passcode-submit');
   const lockError      = document.getElementById('lock-error');
-  const notesBtn       = document.getElementById('notes-btn');
   const notesPanel     = document.getElementById('notes-panel');
-  const notesClose     = document.getElementById('notes-close');
   const noteTitle      = document.getElementById('note-title');
   const titleCounter   = document.getElementById('title-counter');
   const noteBody       = document.getElementById('note-body');
@@ -515,6 +861,7 @@ function getIndexHTML() {
   function unlock() {
     lockOverlay.style.display = 'none';
     main.style.display = 'block';
+    initWidgets();
   }
 
   async function tryLogin() {
@@ -538,20 +885,13 @@ function getIndexHTML() {
   passcodeSubmit.addEventListener('click', tryLogin);
   passcodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
 
+  /* ── NOTES ── */
   noteTitle.addEventListener('input', () => {
     titleCounter.textContent = noteTitle.value.length + ' / 50';
   });
-
   noteImage.addEventListener('change', () => {
     uploadName.textContent = noteImage.files[0] ? noteImage.files[0].name : '';
   });
-
-  notesBtn.addEventListener('click', () => {
-    notesPanel.classList.add('open');
-    loadNotes();
-  });
-
-  notesClose.addEventListener('click', () => notesPanel.classList.remove('open'));
   notesPanel.addEventListener('click', e => {
     if (e.target === notesPanel) notesPanel.classList.remove('open');
   });
@@ -590,25 +930,217 @@ function getIndexHTML() {
     const title = noteTitle.value.trim();
     const body  = noteBody.value.trim();
     if (!title || !body) return;
-
     const fd = new FormData();
     fd.append('title', title);
     fd.append('body',  body);
     if (noteImage.files[0]) fd.append('image', noteImage.files[0]);
-
     try {
       await fetch('/api/notes', { method: 'POST', body: fd });
-      noteTitle.value         = '';
+      noteTitle.value          = '';
       titleCounter.textContent = '0 / 50';
-      noteBody.value          = '';
-      noteImage.value         = '';
-      uploadName.textContent  = '';
+      noteBody.value           = '';
+      noteImage.value          = '';
+      uploadName.textContent   = '';
       loadNotes();
     } catch {}
   });
 
   function escHtml(s) {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ════════════════════════════════════════════
+     WIDGETS
+  ════════════════════════════════════════════ */
+  let weatherExpanded  = false;
+  let calendarExpanded = false;
+  let miniCalOffset    = 0; // months from current
+  // Calendar events loaded from Calendar.js storage key
+  let calEvents = {};
+
+  function initWidgets() {
+    loadWeather();
+    initCalendarWidget();
+    setInterval(loadWeather, 10 * 60 * 1000); // refresh every 10 min
+  }
+
+  /* ── WEATHER ── */
+  const WMO_ICONS = {
+    0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
+    45:'🌫️', 48:'🌫️',
+    51:'🌦️', 53:'🌦️', 55:'🌧️',
+    61:'🌧️', 63:'🌧️', 65:'🌧️',
+    71:'🌨️', 73:'🌨️', 75:'🌨️',
+    77:'🌨️',
+    80:'🌦️', 81:'🌧️', 82:'🌧️',
+    85:'🌨️', 86:'🌨️',
+    95:'⛈️', 96:'⛈️', 99:'⛈️'
+  };
+  const WMO_DESC = {
+    0:'Clear sky', 1:'Mainly clear', 2:'Partly cloudy', 3:'Overcast',
+    45:'Fog', 48:'Icy fog',
+    51:'Light drizzle', 53:'Drizzle', 55:'Heavy drizzle',
+    61:'Light rain', 63:'Rain', 65:'Heavy rain',
+    71:'Light snow', 73:'Snow', 75:'Heavy snow',
+    77:'Snow grains',
+    80:'Light showers', 81:'Showers', 82:'Heavy showers',
+    85:'Light snow showers', 86:'Snow showers',
+    95:'Thunderstorm', 96:'Thunderstorm + hail', 99:'Heavy thunderstorm'
+  };
+
+  async function loadWeather() {
+    try {
+      const r = await fetch('/api/weather');
+      const d = await r.json();
+      const c = d.current;
+      const code = c.weathercode;
+      const icon = WMO_ICONS[code] || '🌡️';
+      const desc = WMO_DESC[code]  || 'Unknown';
+      const temp = Math.round(c.temperature_2m);
+
+      document.getElementById('weather-icon').textContent = icon;
+      document.getElementById('weather-temp').textContent = temp + '°C';
+      document.getElementById('weather-desc').textContent = desc;
+
+      document.getElementById('wx-feels').textContent    = Math.round(c.apparent_temperature) + '°C';
+      document.getElementById('wx-wind').textContent     = Math.round(c.windspeed_10m) + ' km/h';
+      document.getElementById('wx-precip').textContent   = c.precipitation.toFixed(1) + ' mm';
+      document.getElementById('wx-uv').textContent       = c.uv_index ?? '—';
+
+      // Precip probability for current hour
+      const hour = new Date().getHours();
+      const prob = d.hourly?.precipitation_probability?.[hour];
+      document.getElementById('wx-rain-chance').textContent = (prob != null ? prob + '%' : '—');
+    } catch (e) {
+      document.getElementById('weather-desc').textContent = 'Unavailable';
+    }
+  }
+
+  function toggleWeather() {
+    weatherExpanded = !weatherExpanded;
+    const exp = document.getElementById('weather-expanded');
+    const wid = document.getElementById('weather-widget');
+    exp.classList.toggle('open', weatherExpanded);
+    wid.classList.toggle('expanded', weatherExpanded);
+  }
+
+  /* ── CALENDAR ── */
+  function initCalendarWidget() {
+    // Set today's date display
+    const now = new Date();
+    document.getElementById('cal-date-str').textContent = now.toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short'
+    });
+
+    // Try to load events from localStorage (Calendar.js compatible key)
+    // Calendar.js uses window.storage (artifact storage); we mirror via localStorage as fallback
+    loadCalendarEvents();
+    renderMiniCal();
+  }
+
+  function loadCalendarEvents() {
+    try {
+      // Read from localStorage key used by Calendar.js artifact if embedded
+      const raw = localStorage.getItem('brooklyn-calendar-events');
+      if (raw) calEvents = JSON.parse(raw);
+    } catch {}
+    refreshTodayEvents();
+  }
+
+  // Expose a function Calendar.js (or the full calendar page) can call to sync events back
+  window.syncCalendarEvents = function(eventsObj) {
+    calEvents = eventsObj;
+    try { localStorage.setItem('brooklyn-calendar-events', JSON.stringify(eventsObj)); } catch {}
+    refreshTodayEvents();
+    renderMiniCal();
+  };
+
+  function refreshTodayEvents() {
+    const today = new Date();
+    const key   = today.toDateString();
+    const evts  = calEvents[key] || [];
+
+    // Update compact preview
+    const preview = document.getElementById('cal-event-preview');
+    preview.textContent = evts.length
+      ? (evts[0].title + (evts.length > 1 ? \` +\${evts.length - 1} more\` : ''))
+      : 'No events today';
+
+    // Update expanded events list
+    const list = document.getElementById('cal-events-list');
+    list.innerHTML = '';
+    if (!evts.length) {
+      list.innerHTML = '<div id="cal-no-events">Nothing scheduled.</div>';
+      return;
+    }
+    evts.forEach(ev => {
+      const item = document.createElement('div');
+      item.className = 'cal-event-item';
+      item.innerHTML = \`<div>\${escHtml(ev.title)}</div>\`
+        + (ev.startDate ? \`<div class="ev-time">\${ev.startDate.replace('T',' ')}</div>\` : '');
+      list.appendChild(item);
+    });
+  }
+
+  function renderMiniCal() {
+    const now     = new Date();
+    const display = new Date(now.getFullYear(), now.getMonth() + miniCalOffset, 1);
+    const y = display.getFullYear();
+    const m = display.getMonth();
+
+    const monthNames = ['January','February','March','April','May','June',
+                        'July','August','September','October','November','December'];
+    document.getElementById('mini-cal-title').textContent = monthNames[m] + ' ' + y;
+
+    const grid = document.getElementById('mini-cal-grid');
+    grid.innerHTML = '';
+
+    // Day-name headers (Mon–Sun)
+    ['M','T','W','T','F','S','S'].forEach(d => {
+      const el = document.createElement('div');
+      el.className = 'mini-cal-day-name';
+      el.textContent = d;
+      grid.appendChild(el);
+    });
+
+    const firstDow = ((new Date(y, m, 1).getDay() + 6) % 7); // 0=Mon
+    const totalDays = new Date(y, m + 1, 0).getDate();
+
+    for (let i = 0; i < firstDow; i++) {
+      const blank = document.createElement('div');
+      grid.appendChild(blank);
+    }
+
+    for (let d = 1; d <= totalDays; d++) {
+      const el   = document.createElement('div');
+      el.className = 'mini-cal-day';
+      el.textContent = d;
+
+      const isToday = d === now.getDate() && m === now.getMonth() && y === now.getFullYear();
+      if (isToday) el.classList.add('today');
+
+      const key = new Date(y, m, d).toDateString();
+      if (calEvents[key]?.length) el.classList.add('has-event');
+
+      grid.appendChild(el);
+    }
+  }
+
+  function miniCalNav(delta) {
+    miniCalOffset += delta;
+    renderMiniCal();
+  }
+
+  function toggleCalendar() {
+    calendarExpanded = !calendarExpanded;
+    const exp = document.getElementById('calendar-expanded');
+    const wid = document.getElementById('calendar-widget');
+    exp.classList.toggle('open', calendarExpanded);
+    wid.classList.toggle('expanded', calendarExpanded);
+    if (calendarExpanded) {
+      renderMiniCal();
+      refreshTodayEvents();
+    }
   }
 </script>
 </body>
