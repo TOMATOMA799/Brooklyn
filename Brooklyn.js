@@ -39,6 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/Media',   express.static(path.join(__dirname, 'Media')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/Poem',    express.static(path.join(__dirname, 'Poem')));
+app.use('/Game',    express.static(path.join(__dirname, 'Game')));
 
 app.use(session({
   secret: 'brooklyn-secret-key',
@@ -103,7 +104,7 @@ app.post('/api/notes', requireAuth, upload.single('image'), async (req, res) => 
 
 app.get('/', (req, res) => res.send(getIndexHTML()));
 
-['uploads', 'Media', 'Poem'].forEach(dir => {
+['uploads', 'Media', 'Poem', 'Game/DVD'].forEach(dir => {
   const p = path.join(__dirname, dir);
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
@@ -251,15 +252,16 @@ function getIndexHTML() {
 
     #poem-buttons {
       display: flex;
-      justify-content: center;
-      gap: 1.4rem;
-      padding: 2.2rem 1rem 1.5rem;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 2.2rem 2rem 1rem;
     }
     .poem-btn {
       background: var(--btn-bg);
       color: var(--text);
       border: 1px solid var(--border);
-      padding: 0.7rem 2.2rem;
+      padding: 0.6rem 1.8rem;
       font-family: 'Crimson Text', serif;
       font-size: 1.05rem;
       border-radius: 4px;
@@ -270,7 +272,76 @@ function getIndexHTML() {
     .poem-btn:hover {
       background: var(--btn-hover);
       border-color: #4a4f5a;
-      transform: translateY(-2px);
+      transform: translateX(3px);
+    }
+
+    #media-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.2rem;
+      padding: 1.4rem 2rem 3rem;
+    }
+    .media-card {
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s;
+    }
+    .media-card:hover {
+      transform: scale(1.05);
+      border-color: var(--accent-lit);
+    }
+    .media-card-thumb {
+      width: 100%;
+      aspect-ratio: 16/10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+    .media-card-name {
+      padding: 0.6rem 0.8rem;
+      font-family: 'Crimson Text', serif;
+      font-size: 1rem;
+      color: var(--text);
+      letter-spacing: 0.04em;
+      background: var(--surface2);
+      border-top: 1px solid var(--border);
+    }
+    .media-play-btn {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+      background: rgba(0,0,0,0.45);
+      z-index: 2;
+    }
+    .media-card:hover .media-play-btn,
+    .media-card:focus .media-play-btn {
+      opacity: 1;
+    }
+    .media-play-btn svg {
+      width: 48px;
+      height: 48px;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.7));
+    }
+
+    .dvd-thumb-text {
+      font-family: 'Courier New', monospace;
+      font-size: clamp(1rem, 2.5vw, 1.6rem);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.12em;
+      text-shadow: 0 0 18px rgba(255,255,255,0.4), 0 0 4px rgba(255,255,255,0.9);
+      user-select: none;
     }
 
     #notes-panel {
@@ -443,6 +514,21 @@ function getIndexHTML() {
     <button class="poem-btn" onclick="location.href='/Poem/1.js'">Poem 1</button>
     <button class="poem-btn" onclick="location.href='/Poem/2.js'">Poem 2</button>
     <button class="poem-btn" onclick="location.href='/Poem/3.js'">Poem 3</button>
+  </div>
+
+  <div id="media-grid">
+    <div class="media-card" onclick="location.href='/Game/DVD/index.html'">
+      <div class="media-card-thumb">
+        <span class="dvd-thumb-text">Brooklyn</span>
+        <div class="media-play-btn">
+          <svg viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="30" cy="30" r="28" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.6)" stroke-width="2"/>
+            <polygon points="23,18 46,30 23,42" fill="white"/>
+          </svg>
+        </div>
+      </div>
+      <div class="media-card-name">DVD</div>
+    </div>
   </div>
 </div>
 
