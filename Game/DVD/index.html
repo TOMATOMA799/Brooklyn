@@ -6,13 +6,11 @@
   <title>Brooklyn</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     html, body {
       width: 100%; height: 100%;
       background: #000;
       overflow: hidden;
     }
-
     #dvd-text {
       position: absolute;
       font-family: 'Courier New', Courier, monospace;
@@ -24,7 +22,6 @@
       text-shadow: 0 0 20px currentColor;
       transition: color 0.3s;
     }
-
     #back-btn {
       position: fixed;
       top: 1rem;
@@ -45,32 +42,41 @@
       background: rgba(255,255,255,0.15);
       color: #fff;
     }
+    #play-prompt {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.88);
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 1.2rem;
+      cursor: pointer;
+      letter-spacing: 0.12em;
+    }
   </style>
 </head>
 <body>
 
+<div id="play-prompt">Click anywhere to start</div>
 <button id="back-btn" onclick="history.back()">&#8592; Back</button>
-
 <div id="dvd-text">Brooklyn</div>
-
-<audio id="track" src="/Game/DVD/track.mp3" loop autoplay></audio>
+<audio id="track" src="/Game/DVD/track.mp3" loop></audio>
 
 <script>
   const el = document.getElementById('dvd-text');
-
   const colors = [
     '#ff4444', '#ff8800', '#ffdd00',
     '#44ff88', '#00ccff', '#aa44ff',
     '#ff44aa', '#ffffff'
   ];
-
   let colorIdx = 0;
-
   let x = 80;
   let y = 80;
   let dx = 1.8;
   let dy = 1.4;
-
   el.style.color = colors[colorIdx];
 
   function step() {
@@ -78,12 +84,9 @@
     const H = window.innerHeight;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
-
     x += dx;
     y += dy;
-
     let bounced = false;
-
     if (x + w >= W) {
       x = W - w;
       dx = -Math.abs(dx);
@@ -93,7 +96,6 @@
       dx = Math.abs(dx);
       bounced = true;
     }
-
     if (y + h >= H) {
       y = H - h;
       dy = -Math.abs(dy);
@@ -103,25 +105,24 @@
       dy = Math.abs(dy);
       bounced = true;
     }
-
     if (bounced) {
       colorIdx = (colorIdx + 1) % colors.length;
       el.style.color = colors[colorIdx];
     }
-
     el.style.left = x + 'px';
     el.style.top  = y + 'px';
-
     requestAnimationFrame(step);
   }
-
   requestAnimationFrame(step);
 
   const audio = document.getElementById('track');
   audio.volume = 0.7;
-  audio.play().catch(() => {
-    document.addEventListener('click', () => audio.play(), { once: true });
-  });
+
+  const prompt = document.getElementById('play-prompt');
+  prompt.addEventListener('click', () => {
+    audio.play();
+    prompt.style.display = 'none';
+  }, { once: true });
 </script>
 </body>
 </html>
