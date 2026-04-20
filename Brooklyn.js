@@ -4,7 +4,6 @@ const express   = require('express');
 const path      = require('path');
 const fs        = require('fs');
 const auth      = require('./auth');
-const widgets   = require('./widgets');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -16,9 +15,6 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/Game',    express.static(path.join(__dirname, 'Game')));
 
 auth.setup(app);
-
-// Register /api/weather and /calendar routes
-// (called after getCalendarHTML is defined below)
 
 const poemHTML = (title, content) => `<!DOCTYPE html>
 <html lang="en">
@@ -61,10 +57,8 @@ app.get('/Poem/1.js', (req, res) => res.send(poemHTML('Poem 1', poem1)));
 app.get('/Poem/2.js', (req, res) => res.send(poemHTML('Poem 2', 'Coming soon.')));
 app.get('/Poem/3.js', (req, res) => res.send(poemHTML('Poem 3', 'Coming soon.')));
 
-// Weather API proxy — forwards to Open-Meteo (no key needed)
 app.get('/api/weather', async (req, res) => {
   try {
-    // Reading, England coords
     const url = 'https://api.open-meteo.com/v1/forecast?latitude=51.4543&longitude=-0.9781' +
       '&current=temperature_2m,weathercode,windspeed_10m,precipitation,uv_index,apparent_temperature' +
       '&hourly=precipitation_probability&timezone=Europe%2FLondon&forecast_days=1&temperature_unit=celsius';
@@ -82,9 +76,6 @@ app.get('/', (req, res) => res.send(getIndexHTML()));
   const p = path.join(__dirname, dir);
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
-
-// Register widget routes — must be after getCalendarHTML() and getIndexHTML() are defined
-widgets.setup(app, getCalendarHTML());
 
 app.listen(PORT, () => console.log(`Brooklyn running on :${PORT}`));
 
@@ -121,7 +112,6 @@ function getIndexHTML() {
       min-height: 100vh;
     }
 
-    /* ── LOCK OVERLAY ── */
     #lock-overlay {
       position: fixed; inset: 0; z-index: 999;
       background: var(--bg);
@@ -176,7 +166,6 @@ function getIndexHTML() {
 
     #main { display: none; }
 
-    /* ── BANNER ── */
     #banner-wrap {
       position: relative;
       width: 100%;
@@ -229,7 +218,6 @@ function getIndexHTML() {
     }
     #notes-btn:hover { background: var(--accent-lit); transform: translateY(-1px); }
 
-    /* ── CONTENT ROW: poems left, widgets right ── */
     #content-row {
       display: flex;
       align-items: flex-start;
@@ -262,7 +250,6 @@ function getIndexHTML() {
       transform: translateX(3px);
     }
 
-    /* ── MEDIA GRID ── */
     #media-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -331,7 +318,6 @@ function getIndexHTML() {
       user-select: none;
     }
 
-    /* ── NOTES PANEL ── */
     #notes-panel {
       display: none;
       position: fixed;
@@ -494,15 +480,13 @@ function getIndexHTML() {
     <button id="notes-btn" onclick="notesPanel.classList.add('open'); loadNotes();">Notes</button>
   </div>
 
-  <!-- CONTENT ROW: poems left, widgets right -->
   <div id="content-row">
     <div id="poem-buttons">
       <button class="poem-btn" onclick="location.href='/Poem/1.js'">Poem 1</button>
       <button class="poem-btn" onclick="location.href='/Poem/2.js'">Poem 2</button>
       <button class="poem-btn" onclick="location.href='/Poem/3.js'">Poem 3</button>
     </div>
-    \${widgets.html()}
-  </div><!-- /content-row -->
+  </div>
 
   <div id="media-grid">
     <div class="media-card" onclick="location.href='/Game/DVD/index.html'">
@@ -520,7 +504,6 @@ function getIndexHTML() {
   </div>
 </div>
 
-<!-- NOTES PANEL -->
 <div id="notes-panel">
   <div id="notes-drawer">
     <div id="notes-header">
@@ -547,7 +530,6 @@ function getIndexHTML() {
 </div>
 
 <script>
-  /* ── AUTH ── */
   const lockOverlay    = document.getElementById('lock-overlay');
   const main           = document.getElementById('main');
   const passcodeInput  = document.getElementById('passcode-input');
@@ -574,7 +556,6 @@ function getIndexHTML() {
   function unlock() {
     lockOverlay.style.display = 'none';
     main.style.display = 'block';
-    initWidgets();
   }
 
   async function tryLogin() {
@@ -598,7 +579,6 @@ function getIndexHTML() {
   passcodeSubmit.addEventListener('click', tryLogin);
   passcodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
 
-  /* ── NOTES ── */
   noteTitle.addEventListener('input', () => {
     titleCounter.textContent = noteTitle.value.length + ' / 50';
   });
@@ -661,113 +641,6 @@ function getIndexHTML() {
   function escHtml(s) {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-
-  /* widgets logic lives in widgets.js — initWidgets() is exposed via window.initWidgets */
-</script>
-</body>
-</html>`;
-}
-
-// ─────────────────────────────────────────────
-// Calendar page — served at GET /calendar
-// Wraps Calendar.js React component in a full
-// HTML shell that also syncs events back to the
-// Brooklyn widget via localStorage.
-// ─────────────────────────────────────────────
-function getCalendarHTML() {
-  const fs   = require('fs');
-  const path = require('path');
-  const calPath = path.join(__dirname, 'Calendar.js');
-  let calSource = '';
-  try { calSource = fs.readFileSync(calPath, 'utf8'); } catch {}
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Calendar — Brooklyn</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Crimson+Text:ital,wght@0,400;1,400&display=swap" rel="stylesheet"/>
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    html,body{background:#000;color:#fff;font-family:'Crimson Text',Georgia,serif;min-height:100vh}
-    #cal-nav{
-      display:flex;align-items:center;gap:1rem;
-      padding:1rem 2rem;background:#111214;
-      border-bottom:1px solid #2e3138;
-    }
-    #cal-nav a{
-      color:rgba(255,255,255,0.45);font-size:0.9rem;
-      text-decoration:none;letter-spacing:0.06em;
-      transition:color 0.2s;
-    }
-    #cal-nav a:hover{color:#fff}
-    #cal-root{min-height:calc(100vh - 56px)}
-  </style>
-</head>
-<body>
-<div id="cal-nav">
-  <a href="/">&#8592; Back to Brooklyn</a>
-</div>
-<div id="cal-root"></div>
-
-<!-- React + Babel for Calendar.js JSX -->
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<!-- lucide-react shim -->
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<script>
-  // Shim window.storage to localStorage so Calendar.js persistence works
-  window.storage = {
-    get: async (k) => {
-      try {
-        const v = localStorage.getItem('cal:' + k);
-        return v ? { key: k, value: v } : null;
-      } catch { return null; }
-    },
-    set: async (k, v) => {
-      try {
-        localStorage.setItem('cal:' + k, typeof v === 'string' ? v : JSON.stringify(v));
-        // Sync events to Brooklyn widget key
-        if (k === 'events') {
-          localStorage.setItem('brooklyn-calendar-events', typeof v === 'string' ? v : JSON.stringify(v));
-        }
-        return { key: k, value: v };
-      } catch { return null; }
-    },
-    delete: async (k) => {
-      try { localStorage.removeItem('cal:' + k); return { key: k, deleted: true }; }
-      catch { return null; }
-    },
-    list: async (prefix) => {
-      const keys = Object.keys(localStorage)
-        .filter(k => k.startsWith('cal:' + (prefix||'')))
-        .map(k => k.replace(/^cal:/, ''));
-      return { keys };
-    }
-  };
-
-  // lucide-react shim so Calendar.js imports work
-  window['lucide-react'] = {
-    ChevronLeft:  () => React.createElement('span', null, '‹'),
-    ChevronRight: () => React.createElement('span', null, '›'),
-    Plus:         () => React.createElement('span', null, '+'),
-    X:            () => React.createElement('span', null, '×'),
-    Link:         () => React.createElement('span', null, '🔗'),
-    Image:        () => React.createElement('span', null, '🖼'),
-    Repeat:       () => React.createElement('span', null, '↺'),
-    Bell:         () => React.createElement('span', null, '🔔'),
-  };
-</script>
-<script type="text/babel" data-presets="react">
-${calSource}
-
-// Mount
-const root = ReactDOM.createRoot(document.getElementById('cal-root'));
-root.render(React.createElement(Calendar));
 </script>
 </body>
 </html>`;
